@@ -1,0 +1,256 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Core Business Tables
+model Trip {
+  id                String   @id @default(cuid())
+  date              DateTime
+  vehicleNo         String
+  driverName        String
+  quarryId          String
+  transporterId     String
+  destination       String
+  tonnage           Float
+  kaataReceiptNo    String
+  cubicMetersUsed   Float
+  materialCost      Float
+  transportCost     Float
+  sellingPrice      Float
+  profit            Float
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  // Relationships
+  quarry            Quarry   @relation(fields: [quarryId], references: [id])
+  transporter       Transporter @relation(fields: [transporterId], references: [id])
+  quarryPayments    QuarryPayment[]
+  transporterPayments TransporterPayment[]
+  customerPayments  CustomerPayment[]
+  royaltyUsage      RoyaltyUsage[]
+
+  @@index([date])
+  @@index([quarryId])
+  @@index([transporterId])
+  @@index([vehicleNo])
+}
+
+model Quarry {
+  id          String   @id @default(cuid())
+  name        String
+  location    String
+  contactPerson String
+  phone       String
+  ratePerTon  Float
+  gstNumber   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relationships
+  trips       Trip[]
+  payments    QuarryPayment[]
+  advances    Advance[]
+
+  @@index([name])
+  @@index([gstNumber])
+}
+
+model Transporter {
+  id          String   @id @default(cuid())
+  ownerName   String
+  vehicleNumbers String
+  contactPerson String
+  phone       String
+  ratePerTon  Float
+  gstNumber   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relationships
+  trips       Trip[]
+  payments    TransporterPayment[]
+  advances    Advance[]
+
+  @@index([ownerName])
+  @@index([gstNumber])
+}
+
+// Payment Tables
+model QuarryPayment {
+  id              String   @id @default(cuid())
+  quarryId        String
+  tripId          String?
+  date            DateTime
+  amount          Float
+  paymentMethod   String
+  referenceNo     String?
+  adjustedAgainst String?
+  remarks         String?
+  createdAt       DateTime @default(now())
+
+  // Relationships
+  quarry          Quarry   @relation(fields: [quarryId], references: [id])
+  trip            Trip?    @relation(fields: [tripId], references: [id])
+
+  @@index([quarryId])
+  @@index([date])
+  @@index([tripId])
+}
+
+model TransporterPayment {
+  id              String   @id @default(cuid())
+  transporterId   String
+  tripId          String?
+  date            DateTime
+  amount          Float
+  paymentMethod   String
+  referenceNo     String?
+  adjustedAgainst String?
+  remarks         String?
+  createdAt       DateTime @default(now())
+
+  // Relationships
+  transporter     Transporter @relation(fields: [transporterId], references: [id])
+  trip            Trip?    @relation(fields: [tripId], references: [id])
+
+  @@index([transporterId])
+  @@index([date])
+  @@index([tripId])
+}
+
+model CustomerPayment {
+  id              String   @id @default(cuid())
+  date            DateTime
+  amount          Float
+  tripIdsCovered  String[] // Array of trip IDs
+  paymentMethod   String
+  referenceNo     String?
+  adjustedAgainst String?
+  remarks         String?
+  createdAt       DateTime @default(now())
+
+  // Relationships
+  trips           Trip[]
+
+  @@index([date])
+}
+
+// Royalty & Government Tables
+model RoyaltyStock {
+  id                    String   @id @default(cuid())
+  purchaseDate          DateTime
+  purchasedCubicMeters  Float
+  ratePerCubicMeter    Float
+  usedCubicMeters      Float @default(0)
+  remainingCubicMeters  Float
+  governmentReceiptNo   String
+  expiryDate            DateTime?
+  status                String @default("ACTIVE") // ACTIVE, EXPIRED, DEPLETED
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  // Relationships
+  usage                 RoyaltyUsage[]
+
+  @@index([purchaseDate])
+  @@index([status])
+  @@index([expiryDate])
+}
+
+model RoyaltyUsage {
+  id            String   @id @default(cuid())
+  tripId        String
+  royaltyStockId String
+  cubicMetersUsed Float
+  createdAt     DateTime @default(now())
+
+  // Relationships
+  trip          Trip         @relation(fields: [tripId], references: [id])
+  royaltyStock  RoyaltyStock @relation(fields: [royaltyStockId], references: [id])
+
+  @@index([tripId])
+  @@index([royaltyStockId])
+}
+
+model GstRecord {
+  id            String   @id @default(cuid())
+  transactionType String // TRIP, PAYMENT, ROYALTY
+  transactionId String
+  gstAmount     Float
+  gstRate       Float
+  hsnCode       String
+  createdAt     DateTime @default(now())
+
+  @@index([transactionType])
+  @@index([transactionId])
+  @@index([createdAt])
+}
+
+// Financial Tracking Tables
+model Advance {
+  id              String   @id @default(cuid())
+  partyType       String   // QUARRY, TRANSPORTER
+  partyId         String
+  date            DateTime
+  amount          Float
+  remainingBalance Float
+  purpose         String?
+  status          String @default("ACTIVE") // ACTIVE, ADJUSTED, CANCELLED
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([partyType])
+  @@index([partyId])
+  @@index([status])
+}
+
+model OutstandingSummary {
+  id              String   @id @default(cuid())
+  partyType       String   // QUARRY, TRANSPORTER, CUSTOMER
+  partyId         String
+  totalOutstanding Float
+  lastUpdated     DateTime @default(now())
+
+  @@unique([partyType, partyId])
+  @@index([partyType])
+  @@index([partyId])
+}
+
+// System Tables
+model User {
+  id          String   @id @default(cuid())
+  username    String   @unique
+  email       String   @unique
+  passwordHash String
+  role        String   @default("USER") // ADMIN, USER
+  lastLogin   DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([username])
+  @@index([email])
+  @@index([role])
+}
+
+model AppSetting {
+  id          String   @id @default(cuid())
+  settingKey  String   @unique
+  settingValue String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([settingKey])
+}
